@@ -1,11 +1,12 @@
 classdef STLSurfaceRead < matlab.mixin.Copyable
-    %STLSurfaceRead Read a STL surface to matlab
-    %   Detailed explanation goes here
+    %STLSurfaceRead Read an STL surface to matlab
+    %   Reads an STL and creates an object.
+    %   S = STLSurfaceRead(filename)
     
     properties
-        Points
-        Connectivity
-        VertexNormals
+        Points % Coordinates m-by-3
+        Connectivity % Triangle connectivity matrix m-by-3
+        VertexNormals 
         FaceNormals
     end
     
@@ -13,16 +14,17 @@ classdef STLSurfaceRead < matlab.mixin.Copyable
         Triangulated = 0
         Welded = 0
         hp
+        GD
     end
     
     properties (Dependent)
-        EdgeColor
-        FaceColor
+        EdgeColor %Get or set edge color
+        FaceColor %Get or set edge color
     end
     
     
     methods
-        function S = STLSurfaceRead(filename)
+        function S = STLSurfaceRead(filename) % Constructor
             fv = S.stlread(filename);
             warning('off', 'MATLAB:triangulation:PtsNotInTriWarnId')
             T = triangulation(fv.faces,fv.vertices);
@@ -34,6 +36,7 @@ classdef STLSurfaceRead < matlab.mixin.Copyable
         end
         
         function S = TriangulateSurface(S)
+            % Triangulates the surface. Call S.WeldPoints instead 
             if  S.Triangulated || S.Welded
                 return
             end
@@ -170,7 +173,7 @@ classdef STLSurfaceRead < matlab.mixin.Copyable
                 tri(tri==map(im,1)) = map(im,2);
             end
             X =  X(map(:,1),:);
-            S.Points = X
+            S.Points = X;
             S.Connectivity = tri;
             
             T = triangulation(tri, X);
@@ -189,19 +192,19 @@ classdef STLSurfaceRead < matlab.mixin.Copyable
                 S.RequiredFileMissing('xfigure_KPF', 'https://raw.githubusercontent.com/cenmir/xfigure/master/xfigure_KPF.m')
             end
             
-            xfigure;
+            [h1.fig, xfigure_This] = xfigure;
             axis equal;
             S.hp = patch('Faces',S.Connectivity,'Vertices',S.Points, 'FaceColor','c', 'Facelighting','gouraud');
             S.EdgeColor = 'k';
             S.FaceColor = 'c';
-            light
+            S.GD.lights(1) = light;
             view(3)
             if S.isenabled(varargin, 'FaceNormals')
                 T = triangulation(S.Connectivity, S.Points);
                 XC = incenter(T);
                 FN = S.FaceNormals;
                 hold on;
-                quiver3(XC(:,1),XC(:,2),XC(:,3),FN(:,1),FN(:,2),FN(:,3),'Color','b')
+                S.GD.FNquiver = quiver3(XC(:,1),XC(:,2),XC(:,3),FN(:,1),FN(:,2),FN(:,3),'Color','b');
                 hold off;
             end
             
@@ -211,9 +214,15 @@ classdef STLSurfaceRead < matlab.mixin.Copyable
                 X = S.Points;
                 FV = S.VertexNormals;
                 hold on;
-                quiver3(X(:,1),X(:,2),X(:,3),FV(:,1),FV(:,2),FV(:,3),'Color','r')
+                S.GD.VNquiver = quiver3(X(:,1),X(:,2),X(:,3),FV(:,1),FV(:,2),FV(:,3),'Color','r');
                 hold off;
             end
+            
+            %Leave this be, we need the standard keypress function!
+            
+            h1.fig.KeyPressFcn = {@GKPF2,h1,xfigure_This,S};
+            
+            
             
         end
         
@@ -233,7 +242,11 @@ classdef STLSurfaceRead < matlab.mixin.Copyable
         
     end
     
+    
     methods (Access = private)
+        
+        
+        
         function varargout = stlread(S,file)
             % STLREAD imports geometry from an STL file into MATLAB.
             %    FV = STLREAD(FILENAME) imports triangular faces from the binary
@@ -441,5 +454,115 @@ classdef STLSurfaceRead < matlab.mixin.Copyable
             TF = ge@handle(varargin{:});
         end
     end
+end
+
+function GKPF2(src,evnt,h,xfigure_This,S)
+    xfigure_KPF(src, evnt, xfigure_This); %Do not touch
+
+    if strcmp(evnt.Key,'s')
+        if strcmpi(S.hp.FaceLighting,'gouraud')
+            S.hp.FaceLighting = 'flat';
+            set(xfigure_This.StatusBox, 'String', 'FaceLighting: flat')
+        else
+            S.hp.FaceLighting = 'gouraud';
+            set(xfigure_This.StatusBox, 'String', 'FaceLighting: gouraud')
+        end
+    end
+    
+    if strcmpi(evnt.Character,'l')
+        for ilight = S.lights
+            if strcmpi(ilight.Visible,'on')
+                ilight.Visible = 'off';
+                set(xfigure_This.StatusBox, 'String', 'Lights: off')
+            else
+                ilight.Visible = 'on';
+                set(xfigure_This.StatusBox, 'String', 'Lights: on')
+            end
+        end
+    end
+    
+    if strcmpi(evnt.Character,'v')
+        if isfield(S.GD,'VNquiver')
+            if strcmpi(S.GD.VNquiver.Visible,'on')
+                S.GD.VNquiver.Visible = 'off';
+                set(xfigure_This.StatusBox, 'String', 'Vertex normals: off')
+            else
+                S.GD.VNquiver.Visible = 'on';
+                set(xfigure_This.StatusBox, 'String', 'Vertex normals: on')
+            end
+        end
+    end
+    
+    if strcmpi(evnt.Character,'f')
+        if isfield(S.GD,'FNquiver')
+            if strcmpi(S.GD.FNquiver.Visible,'on')
+                S.GD.FNquiver.Visible = 'off';
+                set(xfigure_This.StatusBox, 'String', 'Face normals: off')
+            else
+                S.GD.FNquiver.Visible = 'on';
+                set(xfigure_This.StatusBox, 'String', 'Face normals: on')
+            end
+        end
+    end
+    
+    if strcmpi(evnt.Character,'e')
+        if strcmpi(S.hp.EdgeColor, 'none')
+            S.hp.EdgeColor = 'k';
+            set(xfigure_This.StatusBox, 'String', 'EdgeColor: k')
+        else
+            S.hp.EdgeColor = 'none';
+            set(xfigure_This.StatusBox, 'String', 'EdgeColor: none')
+        end
+    end
+    
+    if strcmpi(evnt.Key,'numpad4')
+       [az,el] = view();
+       az = az+5;
+       view(az,el)
+       set(xfigure_This.StatusBox, 'String', ['Az: ',num2str(az), ' El: ', num2str(el) ])
+    end
+    if strcmpi(evnt.Key,'numpad6')
+       [az,el] = view();
+       az = az-5;
+       view(az,el)
+       set(xfigure_This.StatusBox, 'String', ['Az: ',num2str(az), ' El: ', num2str(el) ])
+    end
+    if strcmpi(evnt.Key,'numpad8')
+       [az,el] = view();
+       el = el-5;
+       view(az,el)
+       set(xfigure_This.StatusBox, 'String', ['Az: ',num2str(az), ' El: ', num2str(el) ])
+    end
+    if strcmpi(evnt.Key,'numpad2')
+       [az,el] = view();
+       el = el+5;
+       view(az,el)
+       set(xfigure_This.StatusBox, 'String', ['Az: ',num2str(az), ' El: ', num2str(el) ])
+    end
+    if strcmpi(evnt.Key,'numpad5')
+        [az,el] = view();
+        v = [az,el];
+        roundTargets = [-360 -270 -180 -90 0 90 180 270 360];
+        vRounded = interp1(roundTargets,roundTargets,v,'nearest');
+        az = vRounded(1);
+        el = vRounded(2);
+        view([az, el]);
+        set(xfigure_This.StatusBox, 'String', ['Az: ',num2str(az), ' El: ', num2str(el) ])
+    end
+    
+    xfigure_This.uiTextHelp.String = {'Press "G" to toggle grid';
+                                      'Press "CTRL+R" to reset axis';
+                                      'Press "Middlemousebuton and drag" to pan axis';
+                                      'Press "CTRL+Click and drag" to rotate axis';
+                                      'Press "SHIFT+S" snap the view to the view-box';
+                                      'Press "SHIFT+P" to save the current window position';
+                                      'Press numpad keys to rotate';
+                                      'Press "e" to toggle edge off and on';
+                                      'Press "l" to toggle lights';
+                                      'Press "v" to toggle vertex normals';
+                                      'Press "f" to toggle face normals';
+                                      'Press "s" to toggle surface shading'};
+    
+    xfigure_This.uiTextHelp.Position = [5    20   261   176];
 end
 
